@@ -1,41 +1,60 @@
 package com.habittracker.ui;
 
 import com.habittracker.data.Storage;
+import com.habittracker.model.Completion;
 import com.habittracker.model.Habit;
+import com.habittracker.model.HabitStatus;
+import com.habittracker.model.HabitStatus.Status;
 import javafx.collections.FXCollections;
+import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.TextStyle;
+import java.util.List;
+import java.util.Locale;
 
 public class MainView {
     
     private Stage stage;
-
-    // observeable list to update ListView automatically when data changes
-    private ObservableList<Habit> habits;
+    private ObservableList<Habit> habits; // observable list to update ListView automatically when data changes
+    private List<Completion> completions;
+    private GridPane weekGrid;
 
     public MainView(Stage stage) {
         this.stage = stage;
 
         // Get habits from json and convert to observable list for javafx
         habits = FXCollections.observableArrayList(Storage.loadHabits());
+
+        completions = Storage.loadCompletions();
     }
 
     public void show() {
         BorderPane root = new BorderPane();
-        root.setPadding(new Insets(10));
+        root.setPadding(new Insets(15));
 
         // Input area on top
         root.setTop(buildInputArea());
 
-        // Show habit list in the center
-        root.setCenter(buildHabitList());
+        // Show week grid in the center
+        root.setCenter(buildWeekGrid());
+
+        // Rerender grid when habits change
+        habits.addListener((ListChangeListener<Habit>) change -> refreshGrid());
 
         // content of the window
-        Scene scene = new Scene(root, 800, 600);
+        Scene scene = new Scene(root, 900, 500);
 
         // configure stage (window)
         stage.setTitle("Habit Tracker");
@@ -60,43 +79,102 @@ public class MainView {
 
         // horizontal layout to show elements in a row
         HBox inputRow = new HBox(10, nameField, frequencyBox, addButton);
-        inputRow.setPadding(new Insets(0, 0, 10, 0));
+        inputRow.setPadding(new Insets(0, 0, 15, 0));
 
         return new VBox(inputRow);
     }
 
-    // define habit list
-    private ListView<Habit> buildHabitList() {
-        ListView<Habit> listView = new ListView<>(habits);
+    // define week grid
+    private GridPane buildWeekGrid() {
+        weekGrid = new GridPane();
+        weekGrid.setHgap(8);
+        weekGrid.setVgap(8);
 
-        // define how each item in the list should look
-        listView.setCellFactory(lv -> new ListCell<Habit>() {
-            @Override
-            protected void updateItem(Habit habit, boolean empty) {
-                super.updateItem(habit, empty);
+        fillGrid();
+        return weekGrid;
+    }
 
-                if (empty || habit == null) {
-                    setText(null);
-                    setGraphic(null);
-                } else {
-                    // label to show habit name and frequency
-                    Label nameLabel = new Label(habit.getName() + " (" + habit.getFrequency() + ")");
+    private void fillGrid() {
+        weekGrid.getChildren().clear();
 
-                    // delete button to remove habit
-                    Button deleteButton = new Button("Delete");
-                    deleteButton.setOnAction(e -> deleteHabit(habit));
+        LocalDate today = LocalDate.now();
 
-                    HBox row = new HBox(nameLabel);
-                    row.setSpacing(10);
-                    HBox.setHgrow(nameLabel, Priority.ALWAYS);
-                    row.getChildren().add(deleteButton);
+        // calculate monday
+        LocalDate monday = today.with(DayOfWeek.MONDAY);
 
-                    setGraphic(row);
-                }
+        // create columns for each day of the week while column 0 is reserved for habit names
+        for (int i = 0; i < 7; i++) {
+            LocalDate day = monday.plusDays(i);
+
+            // get names of the days
+            String dayName = day.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.getDefault());
+
+            // get date of the day
+            String dateStr = String.format("%02d.%02d", day.getDayOfMonth(), day.getMonthValue());
+
+            // design label for each column header
+            Label dayLabel = new Label(dayName + "\n" + dateStr);
+            dayLabel.setAlignment(Pos.CENTER);
+            dayLabel.setStyle("-fx-font-weith: bold;");
+
+            // highlight today's column
+            if (day.equals(today)) {
+                dayLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #2196F3;");
             }
+
+            weekGrid.add(dayLabel, i + 1, 0);
+        }
+
+        // create habit rows
+        for (int row = 0; row < habits.size(); row++) {
+            Habit habit = habits.get(row);
+
+            Label nameLabel = new Label(habit.getName());
+            nameLabel.setMinWidth(120);
+
+            // add delete button for each habit
+            Button deleteButton = new Button("🗑");
+            deleteButton.setOnAction(e -> deleteHabit(habit));
+
+            HBox nameCell = new HBox(8, nameLabel, deleteButton);
+            nameCell.setAlignment(Pos.CENTER_LEFT);
+            weekGrid.add(nameCell, 0, row + 1);
+
+            // colored status points for each day
+            for (int col = 0; col < 7; col++) {
+                LocalDate day = monday.plusDays(col);
+                Status status = HabitStatus.getStatus(habit, day, completions, today);
+
+                Circle circle = buildStatusCircle(status, habit, day, today);
+
+                StackPane cell = new StackPane(circle);
+                cell.setAlignment(Pos.CENTER);
+
+                weekGrid.add(cell, col + 1, row + 1);
+            }
+        }
+    }
+
+    // build colored circles for habit status
+    private Circle buildStatusCircle(Status status, Habit habit, LocalDate day, LocalDate today) {
+        Circle circle = new Circle(18);
+
+        // color depends on status
+        circle.setFill(switch (status) {
+            case DONE -> Color.web("#4CAF50");
+            case PENDING -> Color.web("#FFC107");
+            case MISSED -> Color.web("#F44336");
         });
 
-        return listView;
+        // ensure only missed and pending habits can be clicked to mark them as done
+        if (!day.isAfter(today)) {
+            circle.setStyle("-fx-cursor: hand;");
+            circle.setOnMouseClicked(e -> toggleCompletion(habit, day));
+        } else {
+            circle.setFill(Color.web("#E0E0E0")); // future days are greyed out
+        }
+
+        return circle;
     }
 
     // actions to add and delete habits
@@ -123,5 +201,29 @@ public class MainView {
 
         // save updated habits to json
         Storage.saveHabits(habits);
+    }
+
+    // toggle completion status for a habit
+    private void toggleCompletion(Habit habit, LocalDate day) {
+        boolean alreadyDone = HabitStatus.isCompletedOnDay(habit, day, completions);
+
+        if (alreadyDone) {
+            // remove completion
+            completions.removeIf( c ->
+                    c.getHabitId().equals(habit.getId()) &&
+                    c.getDateTime().toLocalDate().equals(day)
+            );
+        } else {
+            // add new completion
+            LocalDateTime dateTime = day.equals(LocalDate.now()) ? LocalDateTime.now() : day.atTime(12,0);
+            completions.add(new Completion(habit.getId(), dateTime));
+        }
+
+        Storage.saveCompletions(completions);
+        refreshGrid();
+    }
+
+    private void refreshGrid() {
+        fillGrid();
     }
 }
