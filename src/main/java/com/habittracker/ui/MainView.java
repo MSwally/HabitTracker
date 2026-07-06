@@ -30,6 +30,7 @@ public class MainView {
     private ObservableList<Habit> habits; // observable list to update ListView automatically when data changes
     private List<Completion> completions;
     private GridPane weekGrid;
+    private DatePicker datePicker;
 
     public MainView(Stage stage) {
         this.stage = stage;
@@ -77,8 +78,18 @@ public class MainView {
         Button addButton = new Button("+ Add Habit");
         addButton.setOnAction(e -> addHabit(nameField, frequencyBox));
 
+        // spacer to fill space between input fields, buttons and the date picker on the right
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        // DatePicker to simulate specific dates for testing
+        datePicker = new DatePicker(LocalDate.now());
+        datePicker.setPromptText("Select a date");
+        datePicker.valueProperty().addListener((obs, oldVal, newVal) -> refreshGrid());
+        Label testLabel = new Label("Test Date:");
+
         // horizontal layout to show elements in a row
-        HBox inputRow = new HBox(10, nameField, frequencyBox, addButton);
+        HBox inputRow = new HBox(10, nameField, frequencyBox, addButton, spacer, testLabel, datePicker);
         inputRow.setPadding(new Insets(0, 0, 15, 0));
 
         return new VBox(inputRow);
@@ -97,7 +108,7 @@ public class MainView {
     private void fillGrid() {
         weekGrid.getChildren().clear();
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = getToday();
 
         // calculate monday
         LocalDate monday = today.with(DayOfWeek.MONDAY);
@@ -219,7 +230,7 @@ public class MainView {
             );
         } else {
             // add new completion
-            LocalDateTime dateTime = day.equals(LocalDate.now()) ? LocalDateTime.now() : day.atTime(12,0);
+            LocalDateTime dateTime = day.equals(getToday()) ? LocalDateTime.now() : day.atTime(12,0);
             completions.add(new Completion(habit.getId(), dateTime));
         }
 
@@ -229,5 +240,10 @@ public class MainView {
 
     private void refreshGrid() {
         fillGrid();
+    }
+
+    private LocalDate getToday() {
+        LocalDate selectedDate = datePicker.getValue();
+        return selectedDate != null ? selectedDate : LocalDate.now();
     }
 }
