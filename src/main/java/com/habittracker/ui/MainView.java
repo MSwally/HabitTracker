@@ -196,6 +196,10 @@ public class MainView {
     }
 
     private void deleteHabit(Habit habit) {
+        // remove habit from completions list
+        completions.removeIf(c -> c.getHabitId().equals(habit.getId()));
+        Storage.saveCompletions(completions);
+
         // remove habit from observable list
         habits.remove(habit);
 
