@@ -31,7 +31,7 @@
             <version>${javafx.version}</version>
         </dependency>
 
-        <!-- JSON (für Datenpersistenz) -->
+        <!-- JSON (for data persistence) -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
